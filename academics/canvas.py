@@ -30,7 +30,8 @@ class CanvasClient:
         try:
             with urllib.request.urlopen(req, timeout=30) as response:
                 raw = response.read()
-                return (json.loads(raw) if raw else None), dict(response.headers)
+                headers = {key.lower(): value for key, value in response.headers.items()}
+                return (json.loads(raw) if raw else None), headers
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:300]
             if exc.code == 401:
@@ -49,7 +50,7 @@ class CanvasClient:
             body, headers = self.request(next_url)
             if isinstance(body, list):
                 rows.extend(body)
-            link = headers.get("Link", "")
+            link = headers.get("link", "")
             next_url = ""
             for part in link.split(","):
                 if 'rel="next"' in part:

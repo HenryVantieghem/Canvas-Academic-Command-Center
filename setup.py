@@ -3,9 +3,13 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import os
+import shutil
 import stat
 import sys
+from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from academics.canvas import CanvasClient, CanvasError
 from academics.core import ROOT, collect, write_json
@@ -15,25 +19,40 @@ def normalized_url(value: str) -> str:
     value = value.strip().rstrip("/")
     if not value.startswith(("https://", "http://")):
         value = "https://" + value
-    return value
+    parsed = urlsplit(value)
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def detect_timezone() -> str:
+    if os.getenv("TZ"):
+        return os.environ["TZ"]
+    tzinfo = datetime.now().astimezone().tzinfo
+    key = getattr(tzinfo, "key", None)
+    if key:
+        return str(key)
+    try:
+        resolved = Path("/etc/localtime").resolve().as_posix()
+        marker = "/zoneinfo/"
+        if marker in resolved:
+            return resolved.split(marker, 1)[1]
+    except OSError:
+        pass
+    return "UTC"
 
 
 def install_pointer(destination: Path) -> str:
     target = destination / "academics"
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists() or target.is_symlink():
-        resolved = target.resolve() if target.is_symlink() else target
-        if resolved == ROOT / "skill":
-            return f"already installed: {target}"
         return f"kept existing skill: {target}"
-    target.symlink_to(ROOT / "skill", target_is_directory=True)
+    shutil.copytree(ROOT / "skill", target)
     return f"installed: {target}"
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Set up the Canvas Academic Command Center")
     parser.add_argument("--canvas-url", help="Canvas hostname, e.g. https://school.instructure.com")
-    parser.add_argument("--timezone", default="UTC", help="IANA timezone, e.g. America/Chicago")
+    parser.add_argument("--timezone", help="IANA timezone; defaults to the computer's timezone")
     parser.add_argument("--no-install-skills", action="store_true")
     args = parser.parse_args()
 
@@ -53,11 +72,12 @@ def main() -> int:
         print(f"Setup failed: {exc}", file=sys.stderr)
         return 1
 
+    timezone = args.timezone or detect_timezone()
     env_path = ROOT / ".env"
     env_path.write_text(
         f"CANVAS_BASE_URL={base_url}\n"
         f"CANVAS_TOKEN={token}\n"
-        f"LOCAL_TIMEZONE={args.timezone}\n"
+        f"LOCAL_TIMEZONE={timezone}\n"
     )
     env_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
     write_json(ROOT / "data" / "courses.json", courses)
