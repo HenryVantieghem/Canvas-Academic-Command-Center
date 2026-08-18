@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.py[cod]
+.DS_Store
+data/courses.json
+data/assignments.json
+data/refresh-snapshot.json
+data/last-refresh.md
+courses/*/
+!courses/.gitkeep
